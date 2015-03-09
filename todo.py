@@ -164,6 +164,8 @@ def newOrderLogic(chap, id):
 		if cardId==id:
 			continue
 		logicOrders.append(logicOrder)
+	if len(logicOrders) == 0:
+		return 0
 	return max(logicOrders) + 1
 
 #############################################################

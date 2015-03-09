@@ -48,6 +48,9 @@ function next(){
 }
 
 function _updateQA (q, answerMode, klass) {
+	$("#next").hide();
+	numChunks = 0;
+	currentChunk = -2;
 	if(answerMode && q.indexOf("##>>") != -1 && q.indexOf("<<##") != -1) {
 		var start = q.indexOf("##>>");
 		var end = q.indexOf("<<##");
@@ -67,7 +70,6 @@ function _updateQA (q, answerMode, klass) {
 		next();
 	} else {
 		$("#qa").html(q);
-		$("#next").hide();
 	}
 	typeans = document.getElementById("typeans");
 	if (typeans) {
@@ -128,12 +130,4 @@ def mungeQA(html, type, fields, model, data, col):
 		html += "<<## " + sEnd
 	return ankiMungeQA(html, type, fields, model, data, col)
 
-# Change the order of the hooks (make ours first)
-#anki.hooks.remHook("mungeQA", ankiMungeQA)
 anki.hooks.addHook("mungeQA", mungeQA)
-#anki.hooks.addHook("mungeQA", ankiMungeQA)
-
-def showQuestion():
-	pass
-
-anki.hooks.addHook("showQuestion", showQuestion)
