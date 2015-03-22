@@ -8,6 +8,7 @@ from aqt.editor import Editor
 from anki.hooks import wrap, addHook
 from aqt.qt import *
 from aqt.webview import AnkiWebView
+from anki.utils import splitFields
 
 #CREATE TABLE `chapters` (
 #        `id`idINTEGER,
@@ -26,6 +27,7 @@ class Toc():
         self.mww = mw
         self.dock = None
         self.web = None
+        self.content = ""
         addHook("reviewCleanup", self.hide)
         addHook("deckCloosing", self.hide)
         self.show()
@@ -45,6 +47,8 @@ class Toc():
                 self.emit(SIGNAL("closed"))
                 QDockWidget.closeEvent(self, event)
         self.web = TocWebView()
+        if self.content != "":
+            self.web.setHtml(self.content)
         self.dock = DockableWithClose("", mw)
         self.dock.setObjectName("")
         self.dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
@@ -57,8 +61,9 @@ class Toc():
         mw.removeDockWidget(self.dock)
         self.shown = False
 
-    def update(self, content):
-        self.web.setHtml("""<html><body><h1>Sommaire</h1><br>%s</body></html>""" % content)
+    def update(self, chapter, html):
+        self.content = ("""<html><body><h1><u><i>Sommaire</i> : %s</u></h1><br>%s</body></html>""" % (chapter, html))
+        self.web.setHtml(self.content)
 
 _toc = Toc(mw)
 def toggleToc(a):
@@ -80,23 +85,24 @@ def makeTOC(noteId):
     # On recupere l'ID du chapitre de la carte
     for chapId in mw.col.db.execute("SELECT chapId FROM toc WHERE noteId=%d" % (noteId)):
         # On recupere le modele du sommaire (les titres des differentes parties)
-        for partsRaw in mw.col.db.execute("SELECT toc FROM chapters WHERE id=%d" % (chapId)):
-            parts = partsRaw[0].split("\n")
+        for chapitre, noteType, partsRaw in mw.col.db.execute("SELECT chapitre, noteType, toc FROM chapters WHERE id=%d" % (chapId)):
+            notes = {}
+            for n in noteType.split('\n'):
+                infos = n.split('::')
+                notes[int(infos[0])] = int(infos[2])
+            parts = partsRaw.split("\n")
             html = "<ul>"
             i = 1
             for p in parts:
-                html += "<li><h3>%s</h3><br><ul>" % p
+                html += "<li><h2>%s</h2><ul>" % (p)
                 # Enfin, on recupere toutes les notes qui sont dans cette partie
-                notes = {}
-                for noteId, position in mw.col.db.execute("SELECT noteId, position FROM toc WHERE chapId=%d AND part=%d" % (chapId[0], i)):
-                    notes[position] = noteId
-                notes_sorted = sorted(notes.items(), key=operator.itemgetter(1))
-                for n in notes_sorted:
-                    html += "<li>" + str(n) + "</li>"
+                for mid, flds in mw.col.db.execute("SELECT mid, flds FROM notes WHERE id IN (SELECT noteId FROM toc WHERE chapId=%d AND part=%d ORDER BY position)" % (chapId[0], i)):
+                    fields = splitFields(flds)
+                    html += "<li>" + fields[notes[int(mid)]] + "</li>"
                 html += "</ul></li>"
                 i += 1
             html += "</ul>"
-            _toc.update(html)
+            _toc.update(chapitre, html)
             break
         break
 
