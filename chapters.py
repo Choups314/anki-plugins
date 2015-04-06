@@ -32,6 +32,13 @@ class Toc():
         addHook("deckCloosing", self.hide)
         self.show()
 
+    # On affiche la reponse de la carte cliquee
+    def linkHandler(self, nid):
+        note = mw.col.getNote(nid)
+        mw.reviewer.card = note.cards()[0]
+        mw.reviewer._showQuestion()
+        mw.reviewer._showAnswer()
+
     def toggle(self):
         if self.shown:
             self.hide()
@@ -47,6 +54,7 @@ class Toc():
                 self.emit(SIGNAL("closed"))
                 QDockWidget.closeEvent(self, event)
         self.web = TocWebView()
+        self.web.setLinkHandler(self.linkHandler)
         if self.content != "":
             self.web.setHtml(self.content)
         self.dock = DockableWithClose("", mw)
@@ -62,7 +70,13 @@ class Toc():
         self.shown = False
 
     def update(self, chapter, html):
-        self.content = ("""<html><body><h1><u><i>Sommaire</i> : %s</u></h1><br>%s</body></html>""" % (chapter, html))
+        self.content = ("""<html><head>
+                        <style type="text/css"> #currentCard {
+                            border-width:2px;
+                            border-style:solid;
+                            margin:10px;
+                        </style></head>
+                    <body><h1><u><i>Sommaire</i> : %s</u></h1><br>%s</body></html>""" % (chapter, html))
         self.web.setHtml(self.content)
 
 _toc = Toc(mw)
@@ -79,8 +93,6 @@ mw.connect(toggleTOC, SIGNAL("toggled(bool)"), toggleToc)
 # On cree un sommaire (html) pour une carte donnee a partir de la bdd
 #####################################################################
 
-import operator
-
 def makeTOC(noteId):
     # On recupere l'ID du chapitre de la carte
     for chapId in mw.col.db.execute("SELECT chapId FROM toc WHERE noteId=%d" % (noteId)):
@@ -96,9 +108,12 @@ def makeTOC(noteId):
             for p in parts:
                 html += "<li><h2>%s</h2><ul>" % (p)
                 # Enfin, on recupere toutes les notes qui sont dans cette partie
-                for mid, flds in mw.col.db.execute("SELECT mid, flds FROM notes WHERE id IN (SELECT noteId FROM toc WHERE chapId=%d AND part=%d ORDER BY position)" % (chapId[0], i)):
+                for nid, mid, flds in mw.col.db.execute("SELECT id, mid, flds FROM notes WHERE id IN (SELECT noteId FROM toc WHERE chapId=%d AND part=%d ORDER BY position)" % (chapId[0], i)):
                     fields = splitFields(flds)
-                    html += "<li>" + fields[notes[int(mid)]] + "</li>"
+                    span = "<span>"
+                    if(nid == noteId):
+                        span = "<span id='currentCard'>"
+                    html += """<li>%s<a href='%s'>%s</a></span></li>""" % (span, nid, fields[notes[int(mid)]])
                 html += "</ul></li>"
                 i += 1
             html += "</ul>"
