@@ -23,72 +23,15 @@ import utils
 # Le widget qui contient le sommaire
 #####################################################################
 
-class Toc():
-    def __init__(self, mw):
-        self.mww = mw
-        self.dock = None
-        self.web = None
-        self.content = ""
-        addHook("reviewCleanup", self.hide)
-        addHook("deckCloosing", self.hide)
-        self.show()
+# On affiche la reponse de la carte cliquee
+def linkHandler(nid):
+    note = mw.col.getNote(nid)
+    mw.reviewer.card = note.cards()[0]
+    mw.reviewer._showQuestion()
+    mw.reviewer._showAnswer()
 
-    # On affiche la reponse de la carte cliquee
-    def linkHandler(self, nid):
-        note = mw.col.getNote(nid)
-        mw.reviewer.card = note.cards()[0]
-        mw.reviewer._showQuestion()
-        mw.reviewer._showAnswer()
-
-    def toggle(self):
-        if self.shown:
-            self.hide()
-        else:
-            self.show()
-
-    def show(self):
-        class TocWebView(AnkiWebView):
-            def sizeHint(self):
-                return QSize(200, 100)
-        class DockableWithClose(QDockWidget):
-            def closeEvent(self, event):
-                self.emit(SIGNAL("closed"))
-                QDockWidget.closeEvent(self, event)
-        self.web = TocWebView()
-        self.web.setLinkHandler(self.linkHandler)
-        if self.content != "":
-            self.web.setHtml(self.content)
-        self.dock = DockableWithClose("", mw)
-        self.dock.setObjectName("")
-        self.dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
-        self.dock.setFeatures(QDockWidget.DockWidgetClosable)
-        self.dock.setWidget(self.web)
-        mw.addDockWidget(Qt.RightDockWidgetArea, self.dock)
-        self.shown = True
-
-    def hide(self):
-        mw.removeDockWidget(self.dock)
-        self.shown = False
-
-    def update(self, chapter, html):
-        self.content = ("""<html><head>
-                        <style type="text/css"> #currentCard {
-                            border-width:2px;
-                            border-style:solid;
-                            margin:10px;
-                        </style></head>
-                    <body><h1><u><i>Sommaire</i> : %s</u></h1><br>%s</body></html>""" % (chapter, html))
-        self.web.setHtml(self.content)
-
-_toc = Toc(mw)
-def toggleToc(a):
-    _toc.toggle()
-
-toggleTOC = QAction("[Chap] Afficher/cacher le sommaire.", mw)
-toggleTOC.setCheckable(True)
-toggleTOC.setShortcut(QKeySequence("Shift+T"))
-mw.form.menuTools.addAction(toggleTOC)
-mw.connect(toggleTOC, SIGNAL("toggled(bool)"), toggleToc)
+utils.addSideWidget("toc", "Afficher toc", "Shift+T", linkHandler,
+                    QSize(200, 100), Qt.RightDockWidgetArea)
 
 #####################################################################
 # On cree un sommaire (html) pour une carte donnee a partir de la bdd
@@ -118,7 +61,13 @@ def makeTOC(noteId):
                 html += "</ul></li>"
                 i += 1
             html += "</ul>"
-            _toc.update(chapitre, html)
+            utils.sideWidgets["toc"].update("""
+                                    border-width:2px;
+                                    border-style:solid;
+                                    margin:10px;""",
+                                            "<h1><u><i>Sommaire</i> : %s</u></h1><br>%s" %
+                                                (chapitre, html))
+            #_toc.update(chapitre, html)
             break
         break
 
