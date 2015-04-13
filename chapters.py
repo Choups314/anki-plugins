@@ -10,6 +10,7 @@ from aqt.qt import *
 from aqt.webview import AnkiWebView
 from anki.utils import splitFields
 import utils
+import noteChanger
 
 #CREATE TABLE `chapters` (
 #        `id`idINTEGER,
@@ -25,10 +26,7 @@ import utils
 
 # On affiche la reponse de la carte cliquee
 def linkHandler(nid):
-    note = mw.col.getNote(nid)
-    mw.reviewer.card = note.cards()[0]
-    mw.reviewer._showQuestion()
-    mw.reviewer._showAnswer()
+    noteChanger.changeCard(nid, True)
 
 utils.addSideWidget("toc", "Afficher toc", "Shift+T", linkHandler,
                     QSize(200, 100), Qt.RightDockWidgetArea)
