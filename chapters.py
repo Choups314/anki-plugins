@@ -9,6 +9,7 @@ from anki.hooks import wrap, addHook
 from aqt.qt import *
 from aqt.webview import AnkiWebView
 from anki.utils import splitFields
+import utils
 
 #CREATE TABLE `chapters` (
 #        `id`idINTEGER,
@@ -169,50 +170,32 @@ def editNote(note, newPart, newPos):
 # On ajoute le champ pour placer une carte dans une categorie
 #####################################################################
 
-partSpin = None
-positionSpin = None
-current = None
-
 def onValueChangedPart(i):
-    global current
-    editNote(current.note, i, -1)
+    editNote(utils.currentNote.note, i, -1)
 
 def onValueChangedPosition(i):
-    global current
-    editNote(current.note, -1, i)
+    editNote(utils.currentNote.note, -1, i)
 
-def addTextEdit(self):
-    global current
-    global partSpin
-    global positionSpin
-    current = self
-    partSpin = QSpinBox()
-    partSpin.connect(partSpin, SIGNAL("valueChanged(int)"), onValueChangedPart)
-    positionSpin = QSpinBox()
-    positionSpin.connect(positionSpin, SIGNAL("valueChanged(int)"), onValueChangedPosition)
-    self.iconsBox.addWidget(partSpin)
-    self.iconsBox.addWidget(positionSpin)
-
-anki.hooks.addHook("setupEditorButtons", addTextEdit)
+utils.addNoteWidget("partSpin", QSpinBox, "valueChanged(int)", onValueChangedPart)
+utils.addNoteWidget("positionSpin", QSpinBox, "valueChanged(int)", onValueChangedPosition)
 
 #####################################################################
 # On hook Editor.loadNote pour mettre a jour les spin
 #####################################################################
 
 def myLoadNote(self, _old):
-    global partSpin
     global positionSpin
     _old(self)
     # Si la note est presente dans la table toc, alors on met a jour les spins
     contained = True
     for part, position in mw.col.db.execute("SELECT part, position FROM toc WHERE noteId=%d" % (self.note.id)):
-        partSpin.setValue(part)
-        positionSpin.setValue(position)
+        utils.noteWInst["partSpin"].setValue(part)
+        utils.noteWInst["positionSpin"].setValue(position)
         contained = False
         break
     if contained:
-        partSpin.setValue(0)
-        positionSpin.setValue(0)
+        utils.noteWInst["partSpin"].setValue(0)
+        utils.noteWInst["positionSpin"].setValue(0)
 
 Editor.loadNote = wrap(Editor.loadNote, myLoadNote, "loadNote")
 
