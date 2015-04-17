@@ -28,7 +28,7 @@ import noteChanger
 def linkHandler(nid):
     noteChanger.changeCard(nid, True)
 
-utils.addSideWidget("toc", "Afficher toc", "Shift+T", linkHandler,
+utils.addSideWidget("toc", "[Chap] Afficher/cacher le sommaire.", "Shift+T", linkHandler,
                     QSize(200, 100), Qt.RightDockWidgetArea)
 
 #####################################################################
@@ -94,7 +94,7 @@ def editNote(note, newPart, newPos):
         if infos and note.fields[int(infos[0])] == chapter:
             chap = int(id)
     if chap == "":
-        showInfo("Cannot add this note !")
+        print("Cannot add this note !")
         return
     # Si on a deja une entree pour cette note, on la met a jour
     newEntry = True
@@ -118,10 +118,10 @@ def editNote(note, newPart, newPos):
 #####################################################################
 
 def onValueChangedPart(i):
-    editNote(utils.currentNote.note, i, -1)
+    editNote(utils.currentNote, i, -1)
 
 def onValueChangedPosition(i):
-    editNote(utils.currentNote.note, -1, i)
+    editNote(utils.currentNote, -1, i)
 
 utils.addNoteWidget("partSpin", QSpinBox, "valueChanged(int)", onValueChangedPart)
 utils.addNoteWidget("positionSpin", QSpinBox, "valueChanged(int)", onValueChangedPosition)
@@ -131,7 +131,6 @@ utils.addNoteWidget("positionSpin", QSpinBox, "valueChanged(int)", onValueChange
 #####################################################################
 
 def myLoadNote(self, _old):
-    global positionSpin
     _old(self)
     # Si la note est presente dans la table toc, alors on met a jour les spins
     contained = True
@@ -183,3 +182,30 @@ addTOC = QAction("[Chaps] Ajouter un chapitre", mw)
 mw.connect(addTOC, SIGNAL("triggered()"), exeAddChapter)
 mw.form.menuTools.addAction(addTOC)
 
+#####################################################################
+# Fonctions pour des plugins externes :
+#   - getChapter(noteId) Retourne les infos du chapitre de la note
+#   - getNotesOfChapter(chap) Retourne les ID des notes qui sont dans le chapitre
+#   (sous forme d'une liste)
+#####################################################################
+
+def getChapter(noteId):
+    note = mw.col.getNote(noteId)
+    mid = note.mid
+    # On parcourt toutes les notes geree
+    for chapitre, notesType in mw.col.db.execute("SELECT chapitre, noteType FROM chapters"):
+        for noteType in notesType.split('\n'):
+            infos = noteType_parse(noteType, mid)
+            if infos and note.fields[int(infos[0])] == chapitre:
+                return chapitre
+    return ""
+
+def getNotesOfChapter(chap):
+    notes = []
+    notesType = mw.col.db.execute("SELECT noteType FROM chapters WHERE chapitre='%s' LIMIT 1" % (chap)).fetchone()[0]
+    for noteType in notesType.split('\n'):
+        infos = noteType.split('::')
+        for id, flds in mw.col.db.execute("SELECT id, flds FROM notes WHERE mid=%d" % int(infos[0])):
+            if chap == splitFields(flds)[int(infos[1])]:
+                notes.append(id)
+    return notes

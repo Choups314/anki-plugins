@@ -63,7 +63,17 @@ def changeCard(nid, showAnswer = False):
         # On ne veut pas noter cette carte
         mw.reviewer.bottom.web.stdHtml(
             """<table width=100%% cellspacing=0 cellpadding=0>
-            <tr> <td align=center width=50> <button onclick="py.link('ok');">OK</button> </td> </tr>
-            </table>""",
+            <tr>
+
+                <td align=left width=50 valign=top class=stat>
+                    <br><button title="%s" onclick="py.link('edit');">%s</button>
+                </td>
+                <td align=center width=50> <button onclick="py.link('ok');">OK</button> </td>
+
+                <td width=50 align=right valign=top class=stat>
+                    <span id=time class=stattxt></span><br>
+                    <button onclick="py.link('more');">%s &#9662;</button>
+                </td>
+            </tr></table>""" % (_("Shortcut key : E"), _("Edit"), _("More")),
             mw.reviewer.bottom._css + mw.reviewer._bottomCSS)
 
