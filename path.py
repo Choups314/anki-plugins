@@ -41,6 +41,8 @@ class MatchSelectorModel:
     def __init__(self, ui, noteId):
         self.ui = ui
         self.noteId = noteId[0]
+        # Avec cet appel, on est sur que le noeud existe bien
+        self.nodeId = getNodeId(self.noteId)
         self.ui.form.matchsList.connect(self.ui.form.matchsList, SIGNAL("doubleClicked(QModelIndex)"), self.onDoubleClicked)
         self.ui.form.edit.connect(self.ui.form.edit, SIGNAL("clicked()"), self.onEdit)
         self.updateList()
@@ -49,25 +51,42 @@ class MatchSelectorModel:
         setMatchs(mw.col.getNote(self.noteId))
 
     def onDoubleClicked(self, modelIndex):
-        matchId = self.matchIds[modelIndex.row()]
-        # On ajoute le lien (Si il n'est pas deja present) et on ferme la fenetre
-        if (mw.col.db.execute("""SELECT COUNT(id) FROM `PATH.links`
-                             WHERE matchId=%d AND noteId=%d""" % (matchId, self.noteId)).fetchone()[0] == 0) :
-            mw.col.db.execute("""
-                INSERT INTO `PATH.links` (matchId, noteId)
-                VALUES (%d, %d)""" % (matchId, self.noteId))
+        def addLinkIfNotExists(matchId, noteId):
+            if (mw.col.db.execute("""SELECT COUNT(id) FROM `PATH.links`
+                        WHERE matchId=%d AND noteId=%d"""
+                        % (matchId, noteId)).fetchone()[0] == 0) :
+                mw.col.db.execute("""
+                    INSERT INTO `PATH.links` (matchId, noteId)
+                    VALUES (%d, %d)""" % (matchId, noteId))
+
+        row = modelIndex.row()
+        # On ajoute le lien (Si il n'est pas deja present) et on reaffiche les
+        # liens. Enfin on ferme cette fenettre
+        if row == 0: # Si c'est le "Default"
+            # On recuperre l'ID du match Default
+            defaultMatchId = mw.col.db.execute("""
+                    SELECT M.id FROM `PATH.match` AS M
+                        WHERE nodeId=%d LIMIT 1""" % self.nodeId).fetchone()[0]
+            addLinkIfNotExists(defaultMatchId, utils.currentNote.id)
+        else:
+            matchId = self.matchIds[row - 1]
+            addLinkIfNotExists(matchId, utils.currentNote.id)
+        displayLinks(utils.currentNote.id)
         self.ui.close()
 
     def updateList(self):
+        # En premier on affiche l'item "Default" qui n'est associe a aucun match
+        self.ui.form.matchsList.clear()
+        self.ui.form.matchsList.addItem("Default")
         self.matchs = []
         self.matchIds = {}
-        self.ui.form.matchsList.clear()
         # On recupere la liste des matchs et on les affiche
         row = 0
         for matchId, s in mw.col.db.execute("""
             SELECT M.id, str FROM `PATH.match` AS M
             JOIN `PATH.nodes` AS N ON M.nodeId = N.id
                                     WHERE noteId=%d""" % (self.noteId)):
+            if s == '': continue # Le match "Default"
             self.matchs.append(s)
             self.matchIds[row] = matchId
             row += 1
@@ -76,6 +95,16 @@ class MatchSelectorModel:
 #######################################################################
 # On ajoute un widget en haut, qui contiendra les questions (des liens)
 #######################################################################
+
+def getNodeId(noteId):
+    # On  ajoute un noeud, s'il n'y en a pas deja un, et on lui ajoute un match "Default"
+    new = mw.col.db.execute("""SELECT COUNT(id) FROM `PATH.nodes` WHERE noteId = %d""" % (noteId)).fetchone()[0] == 0
+    if new:
+        mw.col.db.execute("""INSERT INTO `PATH.nodes` (noteId) VALUES (%d)""" % (noteId))
+    nodeId = mw.col.db.execute("SELECT id FROM `PATH.nodes` WHERE noteId = %d LIMIT 1" % (noteId)).fetchone()[0]
+    if new:
+        mw.col.db.execute("""INSERT INTO `PATH.match` (nodeId, str) VALUES (%d, '')""" %  nodeId)
+    return nodeId
 
 def onTocClicked(noteId):
     utils.displayDialog("matchSelector", matchSelector_ui.Ui_Form, MatchSelectorModel,
@@ -89,6 +118,8 @@ def showQuestion():
         # A priori, le sommaire n'est pas encore afifche
         chapters.displayChapter(chap)
         chapters.setTocCallback(onTocClicked)
+        # On affiche les liens
+        displayLinks(note.id)
 
 addHook("showQuestion", showQuestion)
 
@@ -141,6 +172,8 @@ class SetMatchModel:
     def onRemove(self):
         self.matchs.pop(self.currIndex)
         if(self.currIndex > 0): self.currIndex -= 1
+        if len(self.matchs) <= 0:
+            self.matchs.append("")
         self.ui.form.content.setText(self.matchs[self.currIndex])
         self.ui.form.num.setText(str(self.currIndex + 1) + " / " + str(len(self.matchs)))
 
@@ -148,14 +181,9 @@ class SetMatchModel:
         self.matchs[self.currIndex] = self.ui.form.content.toPlainText()
 
     def reject(self):
-        # On commence par ajouter un neoud, s'il n'y en a pas deja un.
-        if(mw.col.db.execute("""SELECT COUNT(id) FROM `PATH.nodes` WHERE noteId = %d"""
-                             % (self.nid)).fetchone()[0] == 0):
-            mw.col.db.execute("""INSERT INTO `PATH.nodes` (noteId) VALUES (%d)"""
-                              % (self.nid))
-        nodeId = mw.col.db.execute("SELECT id FROM `PATH.nodes` WHERE noteId = %d LIMIT 1" % (self.note.id)).fetchone()[0]
-        # On reset tous les match de ce noeud
-        mw.col.db.execute("DELETE FROM `PATH.match` WHERE nodeId=%d" % (nodeId))
+        nodeId = getNodeId(self.nid)
+        # On reset tous les match de ce noeud (Sauf le default)
+        mw.col.db.execute("DELETE FROM `PATH.match` WHERE nodeId=%d AND NOT (str = '')" % (nodeId))
         for s in self.matchs:
             s = s.strip()
             if s == '': continue
@@ -181,9 +209,6 @@ utils.addNoteWidget("noteMatchAdd", QPushButton, "clicked()", setMatchs, initBut
 # Les differentes actions affichees lors du review d'une carte
 ######################################################################
 
-def setLink():
-    createLinksFor(utils.currentNote.id)
-
 # On ajoute notre bouton (lors de l'affichage des cartes dans le reviewer) pour
 # definir les match
 
@@ -193,29 +218,32 @@ def addCreateLinksButton(self, m):
     a.setShortcut(QKeySequence("Shift+M"))
     a.connect(a, SIGNAL("triggered()"), setMatchs)
 
-    a = m.addAction("Set link")
-    a.setShortcut(QKeySequence("Shift+L"))
-    a.connect(a, SIGNAL("triggered()"), setLink)
-
 addHook("Reviewer.contextMenuEvent", addCreateLinksButton)
 
 
 #######################################################################
-# On stocke les relations entre les differentes notes dans la bdd
+# On affiche les liens de la carte en cours dans un widget a gauche
 #######################################################################
 
-def createLinksFor(noteId):
-    global coqArgs
-    global coqInst
-    """ Delete every links of this node, and recreate them. """
-    # On commence par recuperer les infos sur la note
-    nodeId = None
-    try:
-        nodeId = mw.col.db.execute("SELECT id FROM `PATH.nodes` WHERE noteId=%d" % (noteId)).fetchone()[0]
-    except TypeError:
-        # Si il n'y a aucun resultat, on quitte.
-        return
-    # On supprime les anciens liens ...
-    mw.col.db.execute("DELETE FROM `PATH.links` WHERE n1 = %d OR n2 = %d" % (nodeId, nodeId))
-    for matchStr in mw.col.db.execute("SELECT str FROM `PATH.match` WHERE nodeId=%d" % (nodeId)):
-        pass
+def linkHandler(link):
+    showInfo(link)
+
+utils.addSideWidget("links", "[PATH] Afficher / cacher les liens.", "Shift+L", linkHandler,
+        QSize(200, 100), Qt.LeftDockWidgetArea, loadHeader=True)
+
+def displayLinks(noteId):
+    # On ajoute chaque lien dans un accordeon Jquery
+    html = """<div id="accordion">\n"""
+    # On les recupere d'abord dans la bdd
+    for s, nid in mw.col.db.execute("""SELECT M.str, N.noteId FROM `PATH.links` AS L
+        JOIN `PATH.match` AS M ON M.id = L.matchId
+        JOIN `PATH.nodes` AS N ON M.nodeId = N.id
+                                    WHERE L.noteId = %d""" % (noteId)):
+        html += "<h3>" + chapters.getLabel(nid) + "</h3>\n"
+        # Traitement special pour le match "Default"
+        if s == "":
+            html += "<div></div>"
+        else:
+            html += "<div><p>" + s + "</p></div>\n"
+    html += "</div>\n"
+    utils.sideWidgets["links"].update("", html)

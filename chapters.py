@@ -242,3 +242,14 @@ def setTocCallback(callback = None):
 def displayChapter(chap):
     makeTOCFromChapName(chap)
 
+# Retourne le champ utilise dans le somaire
+def getLabel(noteId):
+    note = mw.col.getNote(noteId)
+    mid = note.mid
+    # On parcourt toutes les notes geree
+    for chapitre, notesType in mw.col.db.execute("SELECT chapitre, noteType FROM `CHAP.chapters`"):
+        for noteType in notesType.split('\n'):
+            infos = noteType_parse(noteType, mid)
+            if infos and note.fields[int(infos[0])] == chapitre:
+                return note.fields[int(infos[1])]
+    return ""

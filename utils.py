@@ -1,11 +1,12 @@
 from aqt.qt import *
 import anki
-from aqt.utils import showInfo
+from aqt.utils import showInfo, getBase
 from anki.hooks import wrap, addHook
 from aqt.webview import AnkiWebView
 from aqt import mw
 from aqt.editor import Editor
 import aqt
+import header
 
 ###########################################################################
 # Ajout d'un widget dans la barre d'outils d'une note (lors de son edition)
@@ -63,10 +64,11 @@ Editor.loadNote = wrap(Editor.loadNote, updateCurrentNoteEditor, "loadNoteUtils"
 
 class SideWidget():
 
-    def __init__(self, linkHandler, sizeHint, dockArea):
+    def __init__(self, linkHandler, sizeHint, dockArea, hasHeader):
         self.linkHandler = linkHandler
         self.sizeHint = sizeHint
         self.dockArea = dockArea
+        self.hasHeader = hasHeader
         self.dock = None
         self.web = None
         self.content = ""
@@ -102,7 +104,10 @@ class SideWidget():
         self.web = Webview(self.sizeHint)
         self.web.setLinkHandler(self.linkHandler)
         if self.content != "":
-            self.web.setHtml(self.content)
+            if self.hasHeader:
+                self.web.stdHtml(self.content, head=getBase(mw.col))
+            else:
+                self.web.stdHtml(self.content)
         self.dock = DockableWithClose("", mw)
         self.dock.setObjectName("")
         #self.dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
@@ -110,6 +115,8 @@ class SideWidget():
         self.dock.setWidget(self.web)
         mw.addDockWidget(self.dockArea, self.dock)
         self.shown = True
+        if self.hasHeader:
+            header.loadHeader(self.web)
 
     def hide(self):
         mw.removeDockWidget(self.dock)
@@ -122,16 +129,20 @@ class SideWidget():
                         </style></head><body>%s</body></html>"""
                             % (style, html))
         if not self.web is None:
-            self.web.setHtml(self.content)
+            if self.hasHeader:
+                self.web.stdHtml(self.content, head=getBase(mw.col))
+                header.loadHeader(self.web)
+            else:
+                self.web.stdHtml(self.content)
 
 # Tous les SideWidget affiches
 sideWidgets = {}
 
 def addSideWidget(id, menuLabel, shortcut, linkHandler,
                   sizeHint = QSize(100, 100), dockArea = Qt.RightDockWidgetArea,
-                  defaultHtml = "", defaultStyle=""):
+                  defaultHtml = "", defaultStyle="", loadHeader=False):
     global sideWidgets
-    instance = SideWidget(linkHandler, sizeHint, dockArea)
+    instance = SideWidget(linkHandler, sizeHint, dockArea, loadHeader)
     menuAction = QAction(menuLabel, mw)
     menuAction.setCheckable(True)
     menuAction.setShortcut(QKeySequence(shortcut))
