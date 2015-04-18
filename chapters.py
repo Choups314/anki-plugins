@@ -36,9 +36,9 @@ tocItemCallback = None
 # On affiche la reponse de la carte cliquee
 def linkHandler(nid):
     if tocItemCallback is None:
-        noteChanger.changeCard(nid, True)
+        noteChanger.changeCard(int(nid), True)
     else:
-        tocItemCallback(nid)
+        tocItemCallback(int(nid))
 
 utils.addSideWidget("toc", "[Chap] Afficher/cacher le sommaire.", "Shift+T", linkHandler,
                     QSize(200, 100), Qt.RightDockWidgetArea)

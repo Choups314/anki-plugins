@@ -9,6 +9,7 @@ from anki.hooks import addHook, wrap
 from aqt.editor import Editor
 import chapters
 import addMatch_ui
+import matchSelector_ui
 
 # Le mid (type de carte)  des cartes a prendre en compte
 midFilter = [1421169816293]
@@ -26,12 +27,59 @@ chapterField = {1421169816293 : 1}
 #         `str`strTEXT
 # );
 
+# CREATE TABLE `PATH.links` (
+#         `id`idINTEGER PRIMARY KEY AUTOINCREMENT,
+#         `matchId`matchIdINTEGER,
+#         `noteId`noteIdINTEGER
+# );
+
+#######################################################################
+# Un widget qui permet de selectionner un match
+#######################################################################
+
+class MatchSelectorModel:
+    def __init__(self, ui, noteId):
+        self.ui = ui
+        self.noteId = noteId[0]
+        self.ui.form.matchsList.connect(self.ui.form.matchsList, SIGNAL("doubleClicked(QModelIndex)"), self.onDoubleClicked)
+        self.ui.form.edit.connect(self.ui.form.edit, SIGNAL("clicked()"), self.onEdit)
+        self.updateList()
+
+    def onEdit(self):
+        setMatchs(mw.col.getNote(self.noteId))
+
+    def onDoubleClicked(self, modelIndex):
+        matchId = self.matchIds[modelIndex.row()]
+        # On ajoute le lien (Si il n'est pas deja present) et on ferme la fenetre
+        if (mw.col.db.execute("""SELECT COUNT(id) FROM `PATH.links`
+                             WHERE matchId=%d AND noteId=%d""" % (matchId, self.noteId)).fetchone()[0] == 0) :
+            mw.col.db.execute("""
+                INSERT INTO `PATH.links` (matchId, noteId)
+                VALUES (%d, %d)""" % (matchId, self.noteId))
+        self.ui.close()
+
+    def updateList(self):
+        self.matchs = []
+        self.matchIds = {}
+        self.ui.form.matchsList.clear()
+        # On recupere la liste des matchs et on les affiche
+        row = 0
+        for matchId, s in mw.col.db.execute("""
+            SELECT M.id, str FROM `PATH.match` AS M
+            JOIN `PATH.nodes` AS N ON M.nodeId = N.id
+                                    WHERE noteId=%d""" % (self.noteId)):
+            self.matchs.append(s)
+            self.matchIds[row] = matchId
+            row += 1
+            self.ui.form.matchsList.addItem(s)
+
 #######################################################################
 # On ajoute un widget en haut, qui contiendra les questions (des liens)
 #######################################################################
 
 def onTocClicked(noteId):
-    showInfo(str(noteId))
+    utils.displayDialog("matchSelector", matchSelector_ui.Ui_Form, MatchSelectorModel,
+                        500, 500, "Match selector", False, noteId)
 
 def showQuestion():
     note = utils.currentNote
@@ -64,7 +112,7 @@ class SetMatchModel:
         for s in mw.col.db.execute("""
             SELECT str FROM `PATH.match` AS M
             JOIN `PATH.nodes` AS N ON M.nodeId = N.id
-                                   WHERE noteId=%d""" % (utils.currentNote.id)):
+                                   WHERE noteId=%d""" % (self.nid)):
             self.matchs.append(s[0])
         # Et on affiche le premier
         if len(self.matchs) <= 0:
@@ -112,13 +160,19 @@ class SetMatchModel:
             s = s.strip()
             if s == '': continue
             mw.col.db.execute("INSERT INTO `PATH.match` (nodeId, str) VALUES (%d, '%s')" % (nodeId, s))
+        # Si la fenetre de selection de match est ouverte, on met la met a jour
+        if "matchSelector" in aqt.dialogs._dialogs.keys():
+            inst = aqt.dialogs._dialogs["matchSelector"]
+            if not inst[1] is None: inst[1].model.updateList()
 
 def initButton(b):
     b.setText("Set matchs")
 
-def setMatchs():
+def setMatchs(note = None):
+    if note is None:
+        note = utils.currentNote
     utils.displayDialog("setMatch", addMatch_ui.Ui_Form, SetMatchModel,
-            500, 500, "Add match", True, utils.currentNote)
+            500, 500, "Add match", True, note)
 
 utils.addNoteWidget("noteMatchAdd", QPushButton, "clicked()", setMatchs, initButton)
 
@@ -149,12 +203,6 @@ addHook("Reviewer.contextMenuEvent", addCreateLinksButton)
 #######################################################################
 # On stocke les relations entre les differentes notes dans la bdd
 #######################################################################
-
-# CREATE TABLE `PATH.links` (
-#         `id`idINTEGER PRIMARY KEY AUTOINCREMENT,
-#         `matchId`matchIdINTEGER,
-#         `noteId`noteIdINTEGER
-# );
 
 def createLinksFor(noteId):
     global coqArgs

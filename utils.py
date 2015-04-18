@@ -182,7 +182,6 @@ def displayDialog(id, UiClass, ModelClass, minHeight=-1, minWidth=-1, winTitle="
         aqt.dialogs._dialogs[id] = [DialogWidget, None]
     aqt.dialogs.open(id, id, UiClass, ModelClass, minHeight, minWidth, winTitle, processReject, args)
 
-
 ###########################################################################
 # Un widget qui affiche un contenu latex (il genere l'image si besoin)
 ###########################################################################
