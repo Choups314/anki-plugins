@@ -5,6 +5,7 @@ from anki.hooks import wrap, addHook
 from aqt.webview import AnkiWebView
 from aqt import mw
 from aqt.editor import Editor
+import aqt
 
 ###########################################################################
 # Ajout d'un widget dans la barre d'outils d'une note (lors de son edition)
@@ -150,3 +151,46 @@ html_escape_table = {
 
 def escapeToHtml(text):
     return "".join(html_escape_table.get(ord(c), c) for c in text)
+
+###########################################################################
+# Affichage d'une boite de dialogue
+###########################################################################
+
+class DialogWidget(QDialog):
+
+    def __init__(self, id, UiClass, ModelClass, minHeight, minWidth, winTitle, processReject, args):
+        QDialog.__init__(self, None, Qt.Window)
+        self.id = id
+        self.processReject = processReject
+        self.form = UiClass()
+        self.form.setupUi(self)
+        if minHeight != -1: self.setMinimumHeight(minHeight)
+        if minWidth != -1: self.setMinimumWidth(minWidth)
+        self.setWindowTitle(_(winTitle))
+        self.model = ModelClass(self, args)
+        self.show()
+
+    def reject(self):
+        if self.processReject:
+            self.model.reject()
+        aqt.dialogs.close(self.id)
+        QDialog.reject(self)
+
+def displayDialog(id, UiClass, ModelClass, minHeight=-1, minWidth=-1, winTitle="", processReject=False, *args):
+    # On n'ouvre qu'une seule instance a la fois
+    if not id in aqt.dialogs._dialogs.keys():
+        aqt.dialogs._dialogs[id] = [DialogWidget, None]
+    aqt.dialogs.open(id, id, UiClass, ModelClass, minHeight, minWidth, winTitle, processReject, args)
+
+
+###########################################################################
+# Un widget qui affiche un contenu latex (il genere l'image si besoin)
+###########################################################################
+
+class LatexPreview(QPixmap):
+
+        def __init__(self, container):
+            QPixmap.__init__(self, container)
+
+        def dispLatex(self, latex):
+            showInfo(latex)

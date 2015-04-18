@@ -1,24 +1,31 @@
 from aqt import *
 import aqt
-import anki
 from aqt.utils import showInfo
 from aqt import mw
 import addChapter_ui
 from aqt.editor import Editor
 from anki.hooks import wrap, addHook
 from aqt.qt import *
-from aqt.webview import AnkiWebView
 from anki.utils import splitFields
 import utils
 import noteChanger
 
-#CREATE TABLE `chapters` (
-#        `id`idINTEGER,
-#        `chapitre`chapitreTEXT,
-#        `noteType`noteTypeTEXT,
-#        `toc`tocTEXT,
-#        PRIMARY KEY(id)
-#);
+# CREATE TABLE `CHAP.chapters` (
+#         `id`idINTEGER,
+#         `chapitre`chapitreTEXT,
+#         `noteType`noteTypeTEXT,
+#         `toc`tocTEXT,
+#         PRIMARY KEY(id)
+# );
+
+# CREATE TABLE `CHAP.toc` (
+#         `id`idINTEGER,
+#         `chapId`chapIdINTEGER,
+#         `noteId`noteIdINTEGER,
+#         `part`partINTEGER,
+#         `position`positionINTEGER,
+#         PRIMARY KEY(id)
+# );
 
 #####################################################################
 # Le widget qui contient le sommaire
@@ -37,9 +44,9 @@ utils.addSideWidget("toc", "[Chap] Afficher/cacher le sommaire.", "Shift+T", lin
 
 def makeTOC(noteId):
     # On recupere l'ID du chapitre de la carte
-    for chapId in mw.col.db.execute("SELECT chapId FROM toc WHERE noteId=%d" % (noteId)):
+    for chapId in mw.col.db.execute("SELECT chapId FROM `CHAP.toc` WHERE noteId=%d" % (noteId)):
         # On recupere le modele du sommaire (les titres des differentes parties)
-        for chapitre, noteType, partsRaw in mw.col.db.execute("SELECT chapitre, noteType, toc FROM chapters WHERE id=%d" % (chapId)):
+        for chapitre, noteType, partsRaw in mw.col.db.execute("SELECT chapitre, noteType, toc FROM `CHAP.chapters` WHERE id=%d" % (chapId)):
             notes = {}
             for n in noteType.split('\n'):
                 infos = n.split('::')
@@ -50,7 +57,7 @@ def makeTOC(noteId):
             for p in parts:
                 html += "<li><h2>%s</h2><ul>" % (p)
                 # Enfin, on recupere toutes les notes qui sont dans cette partie
-                for nid, mid, flds in mw.col.db.execute("SELECT id, mid, flds FROM notes WHERE id IN (SELECT noteId FROM toc WHERE chapId=%d AND part=%d ORDER BY position)" % (chapId[0], i)):
+                for nid, mid, flds in mw.col.db.execute("SELECT id, mid, flds FROM notes WHERE id IN (SELECT noteId FROM `CHAP.toc` WHERE chapId=%d AND part=%d ORDER BY position)" % (chapId[0], i)):
                     fields = splitFields(flds)
                     span = "<span>"
                     if(nid == noteId):
@@ -89,7 +96,7 @@ def editNote(note, newPart, newPos):
     chap = ""
     # On commence par verifier que ce type de carte est bien pris en compte, et
     # que le chapitre correspond egalement
-    for id, chapter, noteType in mw.col.db.execute("SELECT id, chapitre,noteType FROM chapters"):
+    for id, chapter, noteType in mw.col.db.execute("SELECT id, chapitre,noteType FROM `CHAP.chapters`"):
         infos = noteType_parse(noteType, note.mid)
         if infos and note.fields[int(infos[0])] == chapter:
             chap = int(id)
@@ -98,19 +105,19 @@ def editNote(note, newPart, newPos):
         return
     # Si on a deja une entree pour cette note, on la met a jour
     newEntry = True
-    for id in mw.col.db.execute("SELECT id FROM toc WHERE noteId=%d AND chapId=%d" % (note.id, chap)):
+    for id in mw.col.db.execute("SELECT id FROM `CHAP.toc` WHERE noteId=%d AND chapId=%d" % (note.id, chap)):
         newEntry = False
         if newPart != -1:
-            mw.col.db.execute("UPDATE toc SET part=%d WHERE noteId=%d AND chapId=%d" % (newPart, note.id, chap))
+            mw.col.db.execute("UPDATE `CHAP.toc` SET part=%d WHERE noteId=%d AND chapId=%d" % (newPart, note.id, chap))
         else:
-            mw.col.db.execute("UPDATE toc SET position=%d WHERE noteId=%d AND chapId=%d" % (newPos, note.id, chap))
+            mw.col.db.execute("UPDATE `CHAP.toc` SET position=%d WHERE noteId=%d AND chapId=%d" % (newPos, note.id, chap))
         break
     if newEntry:
         # Sinon, on cree une nouvelle entree
         if newPart != -1:
-            mw.col.db.execute("INSERT INTO toc (chapId, noteId, part, position) VALUES (%d, %d, %d, 1)" % (chap, note.id, newPart))
+            mw.col.db.execute("INSERT INTO `CHAP.toc` (chapId, noteId, part, position) VALUES (%d, %d, %d, 1)" % (chap, note.id, newPart))
         else:
-            mw.col.db.execute("INSERT INTO toc (chapId, noteId, position, part) VALUES (%d, %d, %d, 1)" % (chap, note.id, newPos))
+            mw.col.db.execute("INSERT INTO `CHAP.toc` (chapId, noteId, position, part) VALUES (%d, %d, %d, 1)" % (chap, note.id, newPos))
 
 
 #####################################################################
@@ -134,7 +141,7 @@ def myLoadNote(self, _old):
     _old(self)
     # Si la note est presente dans la table toc, alors on met a jour les spins
     contained = True
-    for part, position in mw.col.db.execute("SELECT part, position FROM toc WHERE noteId=%d" % (self.note.id)):
+    for part, position in mw.col.db.execute("SELECT part, position FROM `CHAP.toc` WHERE noteId=%d" % (self.note.id)):
         utils.noteWInst["partSpin"].setValue(part)
         utils.noteWInst["positionSpin"].setValue(position)
         contained = False
@@ -193,7 +200,7 @@ def getChapter(noteId):
     note = mw.col.getNote(noteId)
     mid = note.mid
     # On parcourt toutes les notes geree
-    for chapitre, notesType in mw.col.db.execute("SELECT chapitre, noteType FROM chapters"):
+    for chapitre, notesType in mw.col.db.execute("SELECT chapitre, noteType FROM `CHAP.chapters`"):
         for noteType in notesType.split('\n'):
             infos = noteType_parse(noteType, mid)
             if infos and note.fields[int(infos[0])] == chapitre:
@@ -202,7 +209,7 @@ def getChapter(noteId):
 
 def getNotesOfChapter(chap):
     notes = []
-    notesType = mw.col.db.execute("SELECT noteType FROM chapters WHERE chapitre='%s' LIMIT 1" % (chap)).fetchone()[0]
+    notesType = mw.col.db.execute("SELECT noteType FROM `CHAP.chapters` WHERE chapitre='%s' LIMIT 1" % (chap)).fetchone()[0]
     for noteType in notesType.split('\n'):
         infos = noteType.split('::')
         for id, flds in mw.col.db.execute("SELECT id, flds FROM notes WHERE mid=%d" % int(infos[0])):

@@ -15,6 +15,7 @@ import anki
 from anki.collection import _Collection
 from aqt.utils import tooltip, getBase
 from anki.utils import json
+import utils
 
 ####################################################
 # Variables de configuration et variables globales
@@ -40,7 +41,7 @@ notes = {}
 #######################################################
 
 
-class TodoDialog(QDialog):
+class TodoModel:
 
     _cardHTML = """
 <div id=qa></div>
@@ -55,30 +56,30 @@ function _updateQA (q) {
 <button	onclick="py.link('%s');">FAIT</button>
 """
 
-    def __init__(self, mww):
+    def showCards(self):
         global chapters
-        QDialog.__init__(self, None, Qt.Window)
-        self.mww = mww
-        self.form = todo_ui.Ui_Dialog()
-        self.form.setupUi(self)
-        self.setWindowTitle(_("TODO list"))
-        self.setMinimumHeight(500)
-        self.setMinimumWidth(500)
-
-        # L'id des notes qui sont affichees actuelement (une par chapitre)
-        self.currentNotes = {}
-
-        # Affichage des cartes
-        self.cards = {}
         for chap in chapters:
             self.cards[chap] = AnkiWebView()
             self.cards[chap].setLinkHandler(self.linkHandler)
             base = getBase(mw.col)
             self.cards[chap].stdHtml(self._cardHTML % chap, head=base)
             self.nextTodo(chap)
-            self.form.chapters.addItem(self.cards[chap], chap)
+            self.ui.form.chapters.addItem(self.cards[chap], chap)
             self.cards[chap].show()
-        self.show()
+
+
+    def __init__(self, ui):
+        self.ui = ui
+
+        # L'id des notes qui sont affichees actuelement (une par chapitre)
+        self.currentNotes = {}
+
+        # Affichage des cartes. Ca peut prendre du temps, car on peut avoir a
+        # regenerer certaines images latex.
+        mw.progress.start(immediate=True,label="Generation des cartes")
+        self.cards = {}
+        self.showCards()
+        mw.progress.finish()
 
     def nextTodo(self, chap):
         # On recupere l'id de la prochaine carte
@@ -94,19 +95,13 @@ function _updateQA (q) {
         markDone(self.currentNotes[chap])
         self.nextTodo(chap)
 
-    def reject(self):
-        aqt.dialogs.close("Todo")
-        QDialog.reject(self)
-
 ##################################################
 # Ajoute le bouton "TODO" sur la page principale
 ##################################################
 
 
 def todoLinkHandler(self):
-    aqt.dialogs._dialogs["Todo"] = [TodoDialog, None]
-    aqt.dialogs.open("Todo", self)
-
+    utils.displayDialog("Todo", todo_ui.Ui_Dialog, TodoModel, 500, 500)
 
 def myLinkHandler(self, link):
     if link == "todo":
