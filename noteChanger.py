@@ -3,6 +3,7 @@ from aqt import mw
 from anki.sound import clearAudioQueue
 from anki.hooks import addHook, wrap
 from aqt.reviewer import Reviewer
+from aqt.utils import showInfo
 
 # Pendant une session d'apprentissage, il peut arriver de vouloir changer de
 # note, sans pour autant quitter la session. Ce plugin permet donc d'effectuer
@@ -77,3 +78,16 @@ def changeCard(nid, showAnswer = False):
             </tr></table>""" % (_("Shortcut key : E"), _("Edit"), _("More")),
             mw.reviewer.bottom._css + mw.reviewer._bottomCSS)
 
+
+###########################################################################
+# Quand on ferme le reviewer, on nettoite tout nos deplacements ..
+###########################################################################
+
+def cleanup():
+    global lastLearningCard
+    lastLearningCard = -1
+    del mw.reviewer.cardQueue[:]
+    mw.reviewer.card = None
+
+addHook("deckCloosing", cleanup)
+addHook("reviewCleanup", cleanup)

@@ -10,6 +10,11 @@ from aqt.editor import Editor
 import chapters
 import addMatch_ui
 
+# Le mid (type de carte)  des cartes a prendre en compte
+midFilter = [1421169816293]
+# Pour chaque type de carte, l'index du champs qui indique le chapitre
+chapterField = {1421169816293 : 1}
+
 # CREATE TABLE `PATH.nodes` (
 #         `id`idINTEGER PRIMARY KEY AUTOINCREMENT,
 #         `noteId`noteIdINTEGER
@@ -25,24 +30,17 @@ import addMatch_ui
 # On ajoute un widget en haut, qui contiendra les questions (des liens)
 #######################################################################
 
-currentChap = ""
-def linkHandler(link):
-    if link == "questionAll":
-        makePath(False)
-    elif link == "questionChap":
-        makePath(True)
-
-utils.addSideWidget("path", "[Path] Afficher/cacher les liens.", "Shift+P", linkHandler,
-                    QSize(1, 100), Qt.TopDockWidgetArea)
+def onTocClicked(noteId):
+    showInfo(str(noteId))
 
 def showQuestion():
-    global currentChap
-    currentChap = chapters.getChapter(utils.currentNote.id)
-    utils.sideWidgets["path"].update("", """
-            <table width="100%%"><tr>
-            <td align=center><button onclick="py.link('questionAll');">Question TOUT</button></td>
-            <td align=center><button onclick="py.link('questionChap');">Question CHAPITRE (%s)</button></td>
-            </tr></table>""" % utils.escapeToHtml(currentChap))
+    note = utils.currentNote
+    # On verifie que l'on gere cette carte ...
+    if note.mid in midFilter:
+        chap = note.fields[chapterField[note.mid]]
+        # A priori, le sommaire n'est pas encore afifche
+        chapters.displayChapter(chap)
+        chapters.setTocCallback(onTocClicked)
 
 addHook("showQuestion", showQuestion)
 
@@ -172,10 +170,4 @@ def createLinksFor(noteId):
     # On supprime les anciens liens ...
     mw.col.db.execute("DELETE FROM `PATH.links` WHERE n1 = %d OR n2 = %d" % (nodeId, nodeId))
     for matchStr in mw.col.db.execute("SELECT str FROM `PATH.match` WHERE nodeId=%d" % (nodeId)):
-        mw.progress.update(label="Searh for " + matchStr[0])
-        # Puis on analyse la version actuelle du code
-        resp = c.interp("SearchAbout %s." % (matchStr[0]))[0].get()
-        if resp[0]:
-            # Si il n'y a pas eu d'erreurs, on analyse la reponse
-            parse(nodeId, resp[1])
-
+        pass

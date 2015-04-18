@@ -31,9 +31,14 @@ import noteChanger
 # Le widget qui contient le sommaire
 #####################################################################
 
+tocItemCallback = None
+
 # On affiche la reponse de la carte cliquee
 def linkHandler(nid):
-    noteChanger.changeCard(nid, True)
+    if tocItemCallback is None:
+        noteChanger.changeCard(nid, True)
+    else:
+        tocItemCallback(nid)
 
 utils.addSideWidget("toc", "[Chap] Afficher/cacher le sommaire.", "Shift+T", linkHandler,
                     QSize(200, 100), Qt.RightDockWidgetArea)
@@ -42,43 +47,52 @@ utils.addSideWidget("toc", "[Chap] Afficher/cacher le sommaire.", "Shift+T", lin
 # On cree un sommaire (html) pour une carte donnee a partir de la bdd
 #####################################################################
 
-def makeTOC(noteId):
-    # On recupere l'ID du chapitre de la carte
-    for chapId in mw.col.db.execute("SELECT chapId FROM `CHAP.toc` WHERE noteId=%d" % (noteId)):
-        # On recupere le modele du sommaire (les titres des differentes parties)
-        for chapitre, noteType, partsRaw in mw.col.db.execute("SELECT chapitre, noteType, toc FROM `CHAP.chapters` WHERE id=%d" % (chapId)):
-            notes = {}
-            for n in noteType.split('\n'):
-                infos = n.split('::')
-                notes[int(infos[0])] = int(infos[2])
-            parts = partsRaw.split("\n")
-            html = "<ul>"
-            i = 1
-            for p in parts:
-                html += "<li><h2>%s</h2><ul>" % (p)
-                # Enfin, on recupere toutes les notes qui sont dans cette partie
-                for nid, mid, flds in mw.col.db.execute("SELECT id, mid, flds FROM notes WHERE id IN (SELECT noteId FROM `CHAP.toc` WHERE chapId=%d AND part=%d ORDER BY position)" % (chapId[0], i)):
-                    fields = splitFields(flds)
-                    span = "<span>"
-                    if(nid == noteId):
-                        span = "<span id='currentCard'>"
-                    html += """<li>%s<a href='%s'>%s</a></span></li>""" % (span, nid, fields[notes[int(mid)]])
-                html += "</ul></li>"
-                i += 1
-            html += "</ul>"
-            utils.sideWidgets["toc"].update("""
-                                    border-width:2px;
-                                    border-style:solid;
-                                    margin:10px;""",
-                                            "<h1><u><i>Sommaire</i> : %s</u></h1><br>%s" %
-                                                (chapitre, html))
-            #_toc.update(chapitre, html)
-            break
-        break
+def makeTOCFromNoteId(noteId):
+    try:
+        chapId = mw.col.db.execute("SELECT chapId FROM `CHAP.toc` WHERE noteId=%d" % (noteId)).fetchone()[0]
+        makeTOC(chapId, noteId)
+    except: pass
+
+def makeTOCFromChapName(chap):
+    try:
+        chapId = mw.col.db.execute("SELECT id FROM `CHAP.chapters` WHERE chapitre='%s'" % chap).fetchone()[0]
+        makeTOC(chapId)
+    except: pass
+
+def makeTOC(chapId, focusNid = -1):
+    # On recupere le modele du sommaire (les titres des differentes parties)
+    (chapitre, noteType, partsRaw) = mw.col.db.execute("SELECT chapitre, noteType, toc FROM `CHAP.chapters` WHERE id=%d" % (chapId)).fetchone()
+    notes = {}
+    for n in noteType.split('\n'):
+        infos = n.split('::')
+        notes[int(infos[0])] = int(infos[2])
+    parts = partsRaw.split("\n")
+    html = "<ul>"
+    i = 1
+    for p in parts:
+        html += "<li><h2>%s</h2><ul>" % (p)
+        # Enfin, on recupere toutes les notes qui sont dans cette partie
+        for nid, mid, flds in mw.col.db.execute("SELECT id, mid, flds FROM notes WHERE id IN (SELECT noteId FROM `CHAP.toc` WHERE chapId=%d AND part=%d ORDER BY position)" % (chapId, i)):
+            fields = splitFields(flds)
+            span = "<span>"
+            if(nid == focusNid):
+                span = "<span id='currentCard'>"
+            html += """<li>%s<a href='%s'>%s</a></span></li>""" % (span, nid, fields[notes[int(mid)]])
+        html += "</ul></li>"
+        i += 1
+    html += "</ul>"
+    utils.sideWidgets["toc"].update("""
+                            border-width:2px;
+                            border-style:solid;
+                            margin:10px;""",
+                                    "<h1><u><i>Sommaire</i> : %s</u></h1><br>%s" %
+                                        (chapitre, html))
 
 def showQuestion():
+    global tocItemCallback
+    tocItemCallback = None
     noteId = mw.reviewer.card.nid
-    makeTOC(noteId)
+    makeTOCFromNoteId(noteId)
 
 addHook("showQuestion", showQuestion)
 
@@ -216,3 +230,15 @@ def getNotesOfChapter(chap):
             if chap == splitFields(flds)[int(infos[1])]:
                 notes.append(id)
     return notes
+
+# On ajoute la possibilite de definir une callback utilisateur lors d'un clique
+# sur un item du sommaire
+# Le comportement par defaut revient a chaque chargement de carte
+
+def setTocCallback(callback = None):
+    global tocItemCallback
+    tocItemCallback = callback
+
+def displayChapter(chap):
+    makeTOCFromChapName(chap)
+
