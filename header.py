@@ -13,14 +13,14 @@ CSS_files = [
 
 # Le code JavaScript suivant est execute des que tous les fichiers JS quand le
 # contenu HTML est modifie (quand tous les fichiers JS ont ete charges)
-update = """$(function() {  $( '#accordion' ).accordion(); });"""
+update = """ """
 
 ##############################################################################
 # On genere un script qui va charger chaque fichier javascript de facon
 # synchrone (L'un apres l'autre)
 ##############################################################################
 
-def genLoadRessources():
+def genLoadRessources(JSupdate):
     if len(JS_scripts) == 0:
         return ""
     cssFiles = ""
@@ -33,7 +33,7 @@ def genLoadRessources():
             %s
             %s
         }
-    """ % (len(JS_scripts), cssFiles, update)
+    """ % (len(JS_scripts), cssFiles, JSupdate)
     for i in xrange(len(JS_scripts)):
         script += """
             function callback%d() {
@@ -49,5 +49,5 @@ def genLoadRessources():
     script += """callback0();"""
     return script
 
-def loadHeader(web):
-    web.eval(genLoadRessources())
+def loadHeader(web, JSupdate=""):
+    web.eval(genLoadRessources(JSupdate))

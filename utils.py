@@ -122,9 +122,7 @@ class SideWidget():
         mw.addDockWidget(self.dockArea, self.dock)
         self.shown = True
         if self.hasHeader:
-            header.loadHeader(self.web)
-        if self.JS != "":
-            self.web.eval(self.JS)
+            header.loadHeader(self.web, self.JS)
 
     def hide(self):
         if self.shown:
@@ -141,11 +139,9 @@ class SideWidget():
         if not self.web is None:
             if self.hasHeader:
                 self.web.stdHtml(self.content, head=getBase(mw.col))
-                header.loadHeader(self.web)
+                header.loadHeader(self.web, self.JS)
             else:
                 self.web.stdHtml(self.content)
-            if self.JS != "":
-                self.web.eval(self.JS)
 
 
 # Tous les SideWidget affiches
