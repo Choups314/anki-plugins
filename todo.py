@@ -68,7 +68,7 @@ function _updateQA (q) {
             self.cards[chap].show()
 
 
-    def __init__(self, ui):
+    def __init__(self, ui, *args):
         self.ui = ui
 
         # L'id des notes qui sont affichees actuelement (une par chapitre)

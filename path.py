@@ -10,6 +10,7 @@ from aqt.editor import Editor
 import chapters
 import addMatch_ui
 import matchSelector_ui
+import noteChanger
 
 # Le mid (type de carte)  des cartes a prendre en compte
 midFilter = [1421169816293]
@@ -114,12 +115,16 @@ def showQuestion():
     note = utils.currentNote
     # On verifie que l'on gere cette carte ...
     if note.mid in midFilter:
+        utils.sideWidgets["links"].checkAndShow()
         chap = note.fields[chapterField[note.mid]]
         # A priori, le sommaire n'est pas encore afifche
         chapters.displayChapter(chap)
         chapters.setTocCallback(onTocClicked)
         # On affiche les liens
         displayLinks(note.id)
+    else:
+        # Sinon on reset le widget des liens
+        utils.sideWidgets["links"].hide()
 
 addHook("showQuestion", showQuestion)
 
@@ -225,25 +230,37 @@ addHook("Reviewer.contextMenuEvent", addCreateLinksButton)
 # On affiche les liens de la carte en cours dans un widget a gauche
 #######################################################################
 
+def deleteLink(linkId):
+    mw.col.db.execute("""DELETE FROM `PATH.links` WHERE id=%d""" % linkId)
+    # Et on met a jour l'affichage
+    displayLinks(utils.currentNote.id)
+
 def linkHandler(link):
-    showInfo(link)
+    action = link[:2]
+    param = int(link[3:])
+    if action == "su":
+        deleteLink(param)
+    elif action == "go":
+        noteChanger.changeCard(param, True)
 
 utils.addSideWidget("links", "[PATH] Afficher / cacher les liens.", "Shift+L", linkHandler,
-        QSize(200, 100), Qt.LeftDockWidgetArea, loadHeader=True)
+        QSize(450, 100), Qt.LeftDockWidgetArea, loadHeader=True, autoToggle=False)
 
 def displayLinks(noteId):
     # On ajoute chaque lien dans un accordeon Jquery
     html = """<div id="accordion">\n"""
     # On les recupere d'abord dans la bdd
-    for s, nid in mw.col.db.execute("""SELECT M.str, N.noteId FROM `PATH.links` AS L
+    for s, nid, lid in mw.col.db.execute("""SELECT M.str, N.noteId, L.id FROM `PATH.links` AS L
         JOIN `PATH.match` AS M ON M.id = L.matchId
         JOIN `PATH.nodes` AS N ON M.nodeId = N.id
                                     WHERE L.noteId = %d""" % (noteId)):
-        html += "<h3>" + chapters.getLabel(nid) + "</h3>\n"
+        html += "<h3>" + chapters.getLabel(nid) + "</h3>\n<div>"
         # Traitement special pour le match "Default"
-        if s == "":
-            html += "<div></div>"
-        else:
-            html += "<div><p>" + s + "</p></div>\n"
-    html += "</div>\n"
-    utils.sideWidgets["links"].update("", html)
+        if s != "":
+            html += "<p>%s</p> <br>" % s
+        html += """ <button class="b_del" onclick="py.link('su_%s');">Supprimer</button>
+                <button class="b_go" onclick="py.link('go_%s');">Aller</button></div>\n""" % (lid, nid)
+    html += "<div>\n"
+    JS_update = """ $("button").button({icons: {primary: "ui-icon-gear", secondary:"ui-icon-closethick"}});
+                    $(".b_go").button({icons: {primary: "ui-icon-arrowthickstop"}});"""
+    utils.sideWidgets["links"].update("", html, JS=JS_update)

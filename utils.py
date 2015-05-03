@@ -25,6 +25,8 @@ def addNoteWidget(id, Class, signal = "", callback = None, init = None):
 
 # La note en cours d'edition ou en cours d'affichage
 currentNote = None
+# La carte en cours d'affichage (que pour le reviewer
+currentCard = None
 
 def setupWidgets(self):
     global currentNote
@@ -43,7 +45,9 @@ anki.hooks.addHook("setupEditorButtons", setupWidgets)
 
 def updateCurrentNoteReviewer():
     global currentNote
+    global currentCard
     currentNote = mw.reviewer.card.note()
+    currentCard = mw.reviewer.card
 
 addHook("showQuestion", updateCurrentNoteReviewer)
 addHook("showAnswer", updateCurrentNoteReviewer)
@@ -64,7 +68,7 @@ Editor.loadNote = wrap(Editor.loadNote, updateCurrentNoteEditor, "loadNoteUtils"
 
 class SideWidget():
 
-    def __init__(self, linkHandler, sizeHint, dockArea, hasHeader):
+    def __init__(self, linkHandler, sizeHint, dockArea, hasHeader, autoToggle):
         self.linkHandler = linkHandler
         self.sizeHint = sizeHint
         self.dockArea = dockArea
@@ -75,7 +79,9 @@ class SideWidget():
         addHook("reviewCleanup", self.hide)
         addHook("deckCloosing", self.hide)
         self.shown = False
-        addHook("showQuestion", self.checkAndShow)
+        if autoToggle:
+            addHook("showQuestion", self.checkAndShow)
+        self.JS = ""
 
     def checkAndShow(self):
         if not self.shown:
@@ -117,32 +123,39 @@ class SideWidget():
         self.shown = True
         if self.hasHeader:
             header.loadHeader(self.web)
+        if self.JS != "":
+            self.web.eval(self.JS)
 
     def hide(self):
-        mw.removeDockWidget(self.dock)
-        self.shown = False
+        if self.shown:
+            mw.removeDockWidget(self.dock)
+            self.shown = False
 
-    def update(self, style, html):
+    def update(self, style, html, JS=""):
         self.content = ("""<html><head>
                         <style type="text/css"> #currentCard {
                             %s
                         </style></head><body>%s</body></html>"""
                             % (style, html))
+        self.JS = JS
         if not self.web is None:
             if self.hasHeader:
                 self.web.stdHtml(self.content, head=getBase(mw.col))
                 header.loadHeader(self.web)
             else:
                 self.web.stdHtml(self.content)
+            if self.JS != "":
+                self.web.eval(self.JS)
+
 
 # Tous les SideWidget affiches
 sideWidgets = {}
 
 def addSideWidget(id, menuLabel, shortcut, linkHandler,
                   sizeHint = QSize(100, 100), dockArea = Qt.RightDockWidgetArea,
-                  defaultHtml = "", defaultStyle="", loadHeader=False):
+                  defaultHtml = "", defaultStyle="", loadHeader=False, autoToggle=True):
     global sideWidgets
-    instance = SideWidget(linkHandler, sizeHint, dockArea, loadHeader)
+    instance = SideWidget(linkHandler, sizeHint, dockArea, loadHeader, autoToggle)
     menuAction = QAction(menuLabel, mw)
     menuAction.setCheckable(True)
     menuAction.setShortcut(QKeySequence(shortcut))

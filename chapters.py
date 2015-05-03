@@ -31,11 +31,31 @@ import noteChanger
 # Le widget qui contient le sommaire
 #####################################################################
 
+chapterSelectorMapper = None
+
+def onChapClick(chapId):
+    makeTOC(int(chapId))
+
+def chapterSelector():
+    global chapterSelectorMapper
+    m = QMenu(mw)
+    # On recupere la liste de tous les chapitres et la premiere note (on fait
+    # l'hypothese qu'il y en a bien une premiere)
+    chapterSelectorMapper = QSignalMapper()
+    for c in relatedChapters:
+            a = m.addAction(c[0])
+            a.connect(a, SIGNAL("triggered()"), chapterSelectorMapper, SLOT("map()"))
+            chapterSelectorMapper.setMapping(a, str(c[1]))
+    chapterSelectorMapper.connect(chapterSelectorMapper, SIGNAL("mapped(QString)"), onChapClick)
+    m.exec_(QCursor.pos())
+
 tocItemCallback = None
 
 # On affiche la reponse de la carte cliquee
 def linkHandler(nid):
-    if tocItemCallback is None:
+    if nid == "chapters":
+        chapterSelector()
+    elif tocItemCallback is None:
         noteChanger.changeCard(int(nid), True)
     else:
         tocItemCallback(int(nid))
@@ -46,6 +66,8 @@ utils.addSideWidget("toc", "[Chap] Afficher/cacher le sommaire.", "Shift+T", lin
 #####################################################################
 # On cree un sommaire (html) pour une carte donnee a partir de la bdd
 #####################################################################
+
+# On ajoute
 
 def makeTOCFromNoteId(noteId):
     try:
@@ -59,7 +81,10 @@ def makeTOCFromChapName(chap):
         makeTOC(chapId)
     except: pass
 
+relatedChapters = None
+
 def makeTOC(chapId, focusNid = -1):
+    global relatedChapters
     # On recupere le modele du sommaire (les titres des differentes parties)
     (chapitre, noteType, partsRaw) = mw.col.db.execute("SELECT chapitre, noteType, toc FROM `CHAP.chapters` WHERE id=%d" % (chapId)).fetchone()
     notes = {}
@@ -72,7 +97,11 @@ def makeTOC(chapId, focusNid = -1):
     for p in parts:
         html += "<li><h2>%s</h2><ul>" % (p)
         # Enfin, on recupere toutes les notes qui sont dans cette partie
-        for nid, mid, flds in mw.col.db.execute("SELECT id, mid, flds FROM notes WHERE id IN (SELECT noteId FROM `CHAP.toc` WHERE chapId=%d AND part=%d ORDER BY position)" % (chapId, i)):
+        for nid, mid, flds in mw.col.db.execute("""
+                        SELECT N.id, N.mid, N.flds FROM notes AS N
+                                JOIN `CHAP.toc`AS T ON T.noteId = N.id
+                                WHERE chapId=%d AND part=%d
+                                ORDER BY position""" % (chapId, i)):
             fields = splitFields(flds)
             span = "<span>"
             if(nid == focusNid):
@@ -85,8 +114,15 @@ def makeTOC(chapId, focusNid = -1):
                             border-width:2px;
                             border-style:solid;
                             margin:10px;""",
-                                    "<h1><u><i>Sommaire</i> : %s</u></h1><br>%s" %
+                                """ <button onclick="py.link('chapters');">Chapitres &#9662;</button>
+                                    <h1><u><i>Sommaire</i> : %s</u></h1><br>%s""" %
                                         (chapitre, html))
+    # On recupere egalements tous les chapitres en realtions
+    relatedChapters = []
+    for id, cha, nt in mw.col.db.execute(
+        """ SELECT C.id, C.chapitre, C.noteType FROM `CHAP.chapters` AS C"""):
+        if str(nt) == str(noteType):
+            relatedChapters.append((cha, id))
 
 def showQuestion():
     global tocItemCallback
@@ -183,7 +219,7 @@ class AddChapter(QDialog):
         partsRaw = self.form.parts.toPlainText()
         notesRaw = self.form.notes.toPlainText()
         chapter = self.form.chapter.text()
-        mw.col.db.execute("INSERT INTO `chapters` (`toc`, `noteType`, `chapitre`) VALUES ('%s', '%s', '%s')" % (partsRaw, notesRaw, chapter))
+        mw.col.db.execute("INSERT INTO `CHAP.chapters` (`toc`, `noteType`, `chapitre`) VALUES ('%s', '%s', '%s')" % (partsRaw, notesRaw, chapter))
         self.form.parts.clear()
         self.form.notes.clear()
         self.form.chapter.setText("")
