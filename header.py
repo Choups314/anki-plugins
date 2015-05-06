@@ -4,7 +4,8 @@ from anki.hooks import wrap
 
 JS_scripts = [
     "jquery/jquery.js",
-    "jquery/jquery-ui.js"
+    "jquery/jquery-ui.js",
+    "jquery/wheelzoom.js"
 ]
 
 CSS_files = [

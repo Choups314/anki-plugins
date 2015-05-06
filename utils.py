@@ -82,6 +82,16 @@ class SideWidget():
         if autoToggle:
             addHook("showQuestion", self.checkAndShow)
         self.JS = ""
+        self.currentGraphZoom = 1.0
+        self.graphZoomFactor = 1.5
+
+    def zoom(self, delta):
+        if delta>0:
+            self.currentGraphZoom *= (self.graphZoomFactor * delta)
+        else:
+            self.currentGraphZoom *= 1 / (self.graphZoomFactor * (-delta))
+        if not self.web is None:
+            self.web.setZoomFactor(self.currentGraphZoom)
 
     def checkAndShow(self):
         if not self.shown:
@@ -141,8 +151,11 @@ class SideWidget():
                 self.web.stdHtml(self.content, head=getBase(mw.col))
                 header.loadHeader(self.web, self.JS)
             else:
-                self.web.stdHtml(self.content)
+                self.web.stdHtml(self.content, head=getBase(mw.col))
 
+    def exeJS(self, JS):
+        if not self.web is None:
+            self.web.eval(JS)
 
 # Tous les SideWidget affiches
 sideWidgets = {}
@@ -170,7 +183,12 @@ html_escape_table = {
 }
 
 def escapeToHtml(text):
-    return "".join(html_escape_table.get(ord(c), c) for c in text)
+    s = ""
+    for c in text:
+        if ord(c) > 128:
+            s += "&#%d;" % ord(c)
+        else: s += c
+    return s
 
 ###########################################################################
 # Affichage d'une boite de dialogue

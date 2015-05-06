@@ -11,6 +11,9 @@ import chapters
 import addMatch_ui
 import matchSelector_ui
 import noteChanger
+from anki.utils import splitFields, namedtmp, tmpdir, call
+import shutil
+import codecs
 
 #######################################################################
 # Tables de la base de donnees
@@ -52,6 +55,17 @@ useMatchs = {}
 
 # L'edition des liens est on/off par default
 defaultOn = {}
+currentOnValue = False
+currentOnApp = ""
+
+def linksOn():
+    global currentApp
+    global currentOnApp
+    global currentOnValue
+    if currentOnApp != currentApp:
+        currentOnApp = currentApp
+        currentOnValue = defaultOn[currentApp]
+    return currentOnValue
 
 # L'application en cours (Chaine vide s'il n'y en a pas)
 currentApp = ""
@@ -147,6 +161,8 @@ def onTocClicked(noteId):
 def showQuestion():
     global currentApp
     note = utils.currentNote
+    # On scroll le graph
+    graphFocusNode(note.id)
     # On verifie que l'on gere cette carte ...
     managed = False
     for app in midFilter:
@@ -275,14 +291,17 @@ def deleteLink(linkId):
     displayLinks(utils.currentNote.id)
 
 def linkHandler(link):
+    global currentOnValue
     action = link[:2]
     if action == "su":
         param = int(link[3:])
         deleteLink(param)
     elif action == "of": # Off
         chapters.setTocCallback(None)
+        currentOnValue = False
     elif action == "on": # On
         chapters.setTocCallback(onTocClicked)
+        currentOnValue = True
     elif action == "go":
         param = int(link[3:])
         noteChanger.changeCard(param, True)
@@ -293,6 +312,7 @@ utils.addSideWidget("links", "[PATH] Afficher / cacher les liens.", "Shift+L", l
 def displayLinks(noteId):
     global defaultOn
     global currentApp
+    links = linksOn()
     html = """<form>
         <div id="radio">
             <input type="radio" id="off" name="radio" %s>
@@ -300,8 +320,8 @@ def displayLinks(noteId):
             <input type="radio" id="on" name="radio" %s>
                 <label for="on">On</label>
         </div>
-    </form> \n""" % (   "" if defaultOn[currentApp] else "checked=\"checked\"",
-                        "" if not defaultOn[currentApp] else "checked=\"checked\"")
+    </form> \n""" % (   "" if links else "checked=\"checked\"",
+                        "" if not links else "checked=\"checked\"")
     # On ajoute chaque lien dans un accordeon Jquery
     html += """<div id="accordion">\n"""
     # On les recupere d'abord dans la bdd
@@ -358,4 +378,165 @@ useMatchs["Exos"] = True
 defaultOn["Exos"] = True
 
 
+#######################################################################
+# Generation des graphs dot
+#######################################################################
 
+def exeGenerate():
+    generateGraph(
+        [1419157173874, 1421781450069, 1419152687852],
+        {
+            1419157173874: 4,
+            1421781450069: 5,
+            1419152687852: 2
+        }, {
+            1419157173874: 3,
+            1421781450069: 4,
+            1419152687852: 0
+        }
+    )
+
+genGraph = QAction("[PATHS] Generer le graphe", mw)
+mw.connect(genGraph, SIGNAL("triggered()"), exeGenerate)
+mw.form.menuTools.addAction(genGraph)
+
+def generateGraph(mids, chaptersField, labelsField):
+    """ chapterField and labelField are dictionnaries. """
+    output = "digraph G { \n"
+    # On ne traite que les chapitres qui ont actives le graphe
+    chapts = chapters.graphChapters()
+    # le dico nodes contient une liste pour chaque chapitre. Chaque liste
+    # contient tous les neuds (un par note) presents dans ce chapitre, et
+    # representes par des tuples (noteId, label)
+    nodes = {}
+    for mid in mids:
+        chapterField = chaptersField[mid]
+        labelField = labelsField[mid]
+        for id, flds in mw.col.db.execute("""
+               SELECT id, flds FROM notes WHERE mid=%d
+            """ % mid):
+            fields = splitFields(flds)
+            chapter = fields[chapterField]
+            if not chapter in chapts:
+                continue
+            label = fields[labelField]
+            if(not chapter in nodes):
+                nodes[chapter] = []
+            nodes[chapter].append((id, label))
+    # On genere les noeuds, dans des clusters (un par chapitre)
+    notes = []
+    for chap in nodes:
+        output += """subgraph cluster_%d {
+            node [style=filled];
+            label = "%s";
+            color=blue;
+        """ % (chapts[chap], chap)
+        for n in nodes[chap]:
+            output += """n%d [label="%s", URL="%d"];\n""" % (n[0], n[1], n[0])
+            notes.append(n)
+        output += """
+        }\n"""
+    # Puis on ajoute tous les liens ..
+    for n in notes:
+        for nid in mw.col.db.execute("""SELECT N.noteId FROM `PATH.links` AS L
+            JOIN `PATH.match` AS M ON M.id = L.matchId
+            JOIN `PATH.nodes` AS N ON M.nodeId = N.id
+                                        WHERE L.noteId = %d""" % (n[0])):
+            output += """n%d -> n%d;\n""" % (nid[0], n[0])
+    output += "}"
+    generateGraphImage(output)
+
+graphName = "graph.png"
+graphMapName = "graphMap.cmapx"
+
+def generateGraphImage(graph):
+    # On ecrit le graphe dot dans un fichier temporaire, puis on le genere au
+    # format png
+    # On genere aussi le map
+    graphDotFile = namedtmp("graph.dot")
+    graphDot = codecs.open(graphDotFile, "w+", encoding="utf-8")
+    graphDot.write(graph)
+    graphDot.close()
+    log = open(namedtmp("dot_log.txt"), "w")
+    mdir = mw.col.media.dir()
+    oldcwd = os.getcwd()
+    png = str(namedtmp("tmpGraph.png"))
+    cmapx = str(namedtmp("tmpGraph.cmapx"))
+    cmds = [
+        ["dot", graphDotFile, "-Tpng", "-o%s" % png],
+        ["dot", graphDotFile, "-Tcmapx", "-Tcmapx", "-o%s" % cmapx]
+    ]
+    try:
+        os.chdir(tmpdir())
+        for cmd in cmds:
+            if call(cmd, stdout=log, stderr=log):
+                # Erreur ..
+                log = open(namedtmp("dot_log.txt", rm=False)).read()
+                msg = (_("Error generating graph %s.") % (log))
+                showInfo(msg)
+                break
+        # On ajoute l'image et le map dans les medias
+        shutil.copyfile(png, os.path.join(mdir, graphName))
+        shutil.copyfile(cmapx, os.path.join(mdir, graphMapName))
+        showInfo(_("Graph successfully generated !"))
+    finally:
+        os.chdir(oldcwd)
+    updateGraph()
+
+#######################################################################
+# On affiche le graphe dans un side-widget
+#######################################################################
+
+def graphLinkHandler(nid):
+    if(nid == "zi"):
+        utils.sideWidgets["graph"].zoom(-1.0)
+    elif(nid == "zo"):
+        utils.sideWidgets["graph"].zoom(1.0)
+    else:
+        nid = int(nid)
+
+utils.addSideWidget("graph", "[Path] Afficher / cacher le graphe.", "Shift+G", graphLinkHandler,
+                    QSize(100, 500), Qt.BottomDockWidgetArea, loadHeader = True)
+
+def updateGraph():
+    # On recupere le map du graphe. S'il n'y en a pas, c'est que le graphe n'a
+    # pas ete genere, donc on arrete le process.
+    try:
+        cmapxFile = open(graphMapName, "r")
+        cmapx = "".join(cmapxFile.readlines())
+        JS_load = """
+            $("#drag").draggable();
+            $("#zoomIn").button({icons: {primary: "ui-icon-zoomin"}});
+            $("#zoomOut").button({icons: {primary: "ui-icon-zoomout"}});
+        """
+        utils.sideWidgets["graph"].update("""
+        """, u"""
+            <div id="zoom" style="position: absolute;
+                left: 100px;
+                top: 10px;
+                z-index:1000;
+                padding:10px;
+                border-radius: 10px;
+                border: 2px solid #8AC007;
+                background-color:#FFF;">
+                                        <button id="zoomIn" onclick="py.link('zo');" style="margin-right:10px;"></button>
+                <button id="zoomOut" onclick="py.link('zi');" ></button>
+            </div>
+            <div id="drag">
+                <img src="graph.png" usemap="#G" id="graph"
+                                        style="cursor: move" />
+                %s
+            </div>
+            """ %(utils.escapeToHtml(cmapx)), JS = JS_load)
+    except IOError:
+        pass
+
+def graphFocusNode(noteId):
+    JS_script = """
+        $('html, body').animate({
+            scrollTop: $("area[href='%d']").offset().top
+        }, 500);
+    """ % (noteId)
+    utils.sideWidgets["graph"].exeJS(JS_script)
+
+anki.hooks.addHook("profileLoaded", updateGraph)

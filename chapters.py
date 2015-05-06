@@ -15,9 +15,9 @@ import noteChanger
 #         `chapitre`chapitreTEXT,
 #         `noteType`noteTypeTEXT,
 #         `toc`tocTEXT,
+#         `graph`graphINTEGER DEFAULT 0,
 #         PRIMARY KEY(id)
 # );
-
 # CREATE TABLE `CHAP.toc` (
 #         `id`idINTEGER,
 #         `chapId`chapIdINTEGER,
@@ -26,6 +26,8 @@ import noteChanger
 #         `position`positionINTEGER,
 #         PRIMARY KEY(id)
 # );
+
+currentChap = -1
 
 #####################################################################
 # Le widget qui contient le sommaire
@@ -52,8 +54,17 @@ def chapterSelector():
 tocItemCallback = None
 
 # On affiche la reponse de la carte cliquee
+
 def linkHandler(nid):
-    if nid == "chapters":
+    global currentChap
+    def setGenerateGraph(value):
+        mw.col.db.execute("UPDATE `CHAP.chapters` SET graph=%d WHERE id=%d" %
+                                (value, currentChap))
+    if nid == "_graphOn":
+        setGenerateGraph(1)
+    elif nid == "_graphOff":
+        setGenerateGraph(0)
+    elif nid == "chapters":
         chapterSelector()
     elif tocItemCallback is None:
         noteChanger.changeCard(int(nid), True)
@@ -61,13 +72,11 @@ def linkHandler(nid):
         tocItemCallback(int(nid))
 
 utils.addSideWidget("toc", "[Chap] Afficher/cacher le sommaire.", "Shift+T", linkHandler,
-                    QSize(200, 100), Qt.RightDockWidgetArea)
+                    QSize(200, 100), Qt.RightDockWidgetArea, loadHeader=True)
 
 #####################################################################
 # On cree un sommaire (html) pour une carte donnee a partir de la bdd
 #####################################################################
-
-# On ajoute
 
 def makeTOCFromNoteId(noteId):
     try:
@@ -78,12 +87,48 @@ def makeTOCFromNoteId(noteId):
 def makeTOCFromChapName(chap):
     try:
         chapId = mw.col.db.execute("SELECT id FROM `CHAP.chapters` WHERE chapitre='%s'" % chap).fetchone()[0]
-        makeTOC(chapId)
+        makeTOC(chapId, utils.currentNote.id)
     except: pass
 
 relatedChapters = None
 
+def makeHeader(chapId):
+    """ Make the table of content header, and the JS load script """
+    generateGraph = mw.col.db.execute("""SELECT graph FROM `CHAP.chapters`
+                WHERE id=%d
+                LIMIT 1""" % (chapId)).fetchone()[0] != 0
+    header = """
+    <table> <tr>
+    <td>
+        <button onclick="py.link('chapters');">Chapitres &#9662;</button>
+    </td>
+    <td>
+        <form>
+            <div id="radio">
+                <input type="radio" id="_graphOff" name="radio" %s>
+                    <label for="_graphOff">Off</label>
+                <input type="radio" id="_graphOn" name="radio" %s>
+                    <label for="_graphOn">On</label>
+            </div>
+        </form> \n
+    </td>
+    </tr></table>
+    """ % ( "" if generateGraph else "checked=\"checked\"",
+            "" if not generateGraph else "checked=\"checked\"")
+
+    JS_load = """
+        $(function() {
+            $('#radio').buttonset();
+            $("input:radio[name=radio]").click(function() {
+                var value = $(this).attr("id");
+                py.link(value);
+            });
+        });
+    """
+    return (header, JS_load)
+
 def makeTOC(chapId, focusNid = -1):
+    global currentChap
     global relatedChapters
     # On recupere le modele du sommaire (les titres des differentes parties)
     (chapitre, noteType, partsRaw) = mw.col.db.execute("SELECT chapitre, noteType, toc FROM `CHAP.chapters` WHERE id=%d" % (chapId)).fetchone()
@@ -106,17 +151,20 @@ def makeTOC(chapId, focusNid = -1):
             span = "<span>"
             if(nid == focusNid):
                 span = "<span id='currentCard'>"
-            html += """<li>%s<a href='%s'>%s</a></span></li>""" % (span, nid, fields[notes[int(mid)]])
+            html += """<li>%s<a onclick="py.link('%s');">%s</a></span></li>""" % (span, nid, fields[notes[int(mid)]])
         html += "</ul></li>"
         i += 1
     html += "</ul>"
+    (header, JS_load) = makeHeader(chapId)
+    currentChap = chapId
     utils.sideWidgets["toc"].update("""
                             border-width:2px;
                             border-style:solid;
                             margin:10px;""",
-                                """ <button onclick="py.link('chapters');">Chapitres &#9662;</button>
+                                """ %s
                                     <h1><u><i>Sommaire</i> : %s</u></h1><br>%s""" %
-                                        (chapitre, html))
+                                        (header, chapitre, html),
+                    JS=JS_load)
     # On recupere egalements tous les chapitres en realtions
     relatedChapters = []
     for id, cha, nt in mw.col.db.execute(
@@ -289,3 +337,9 @@ def getLabel(noteId):
             if infos and note.fields[int(infos[0])] == chapitre:
                 return note.fields[int(infos[1])]
     return ""
+
+def graphChapters():
+    chaps = {}
+    for id, chapitre in mw.col.db.execute("SELECT id, chapitre FROM `CHAP.chapters` WHERE graph=1"):
+        chaps[chapitre] = id
+    return chaps
