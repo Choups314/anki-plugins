@@ -10,31 +10,60 @@ import unicodedata
 import sys
 import utils
 from aqt import mw
+import proofs
 
-### Le probleme est que la fonction filesInStr originale ne prend pas en
-### compte le html des cartes (qui peut contenir des balises [latex] ..).
-### Ces images latex ne sont donc pas prises en compte correctement dans
-### la fonction "Verification des medias".
+#######################################################################
+# On definit quelques exceptions ..
+#######################################################################
+
+exceptions = [
+    "graph.png",
+    "graphMap.png"
+]
+
+#######################################################################
+# Le probleme est que la fonction filesInStr originale ne prend pas en
+# compte le html des cartes (qui peut contenir des balises [latex] ..).
+# Elle ne prend pas non plus en compte les images des preuves
+# Ces images latex ne sont donc pas prises en compte correctement dans
+# la fonction "Verification des medias".
+#######################################################################
+
 
 def getMedias(model, fields, col):
     l = []
     # Expand the "outer-latex" if needed
     i = 0 # Field counter
+    def findFiles(tmp, l):
+        for reg in MediaManager.regexps:
+            for match in re.finditer(reg, tmp):
+                fname = match.group("fname")
+                l.append(fname)
+    def findFilesInTemplate(reg, tmpl):
+        try:
+            tmplEnd = re.finditer(reg, tmpl).next().group("end")
+            if tmplEnd:
+                # On "simule" un champ latex
+                tmp = proofs.mungeQA("[latex]" + fields[i] + tmplEnd + "[/latex]",
+                                        None, None, model, None, col)
+                # On a necessairement une occurrence "standard"
+                findFiles(tmp, l)
+        except StopIteration: pass
     for f in model['flds']:
+        fieldLatexRegexp = re.compile(r"\[latex\]\{\{%s\}\}(?P<end>.+?)\[/latex\]" % (f['name'])
+                    , re.DOTALL | re.IGNORECASE)
         for tmpl in model['tmpls']:
-            if ((tmpl["qfmt"].find("[latex]{{" + f['name'] + "}}") != -1)
-                    or (tmpl["afmt"].find("[latex]{{" + f['name'] + "}}") != -1)):
-                fields[i] = "[latex]" + fields[i] + "[/latex]"
-                break
+            findFilesInTemplate(fieldLatexRegexp, tmpl["qfmt"])
+            findFilesInTemplate(fieldLatexRegexp, tmpl["afmt"])
         i += 1
     for string in fields:
         # handle latex
-        string = mungeQA(string, None, None, model, None, col)
+        o = string
+        string = proofs.mungeQA(string, None, None, model, None, col)
         # extract filenames
         for reg in MediaManager.regexps:
             for match in re.finditer(reg, string):
                 fname = match.group("fname")
-                #isLocal = not re.match("(https?|ftp)://", fname.lower())
                 l.append(fname)
     return l
 

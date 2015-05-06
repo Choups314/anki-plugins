@@ -11,9 +11,11 @@ from aqt.utils import showInfo
 from aqt import mw
 import anki
 
+#######################################################################
 #######################################
 ### Variables et configuration globales
 #######################################
+#######################################################################
 
 # Le mid (type de carte) des cartes en prendre en compte
 midFilter = []
@@ -113,21 +115,24 @@ function _typeAnsPress() {
 
 Reviewer._initWeb = wrap(Reviewer._initWeb, myInitWeb, "initWeb")
 
-##########
+#######################################################################
+# Analyse des champs "preuve"
+#######################################################################
+
 def mungeQA(html, type, fields, model, data, col):
-	start = html.find("#-#")
-	end = html.find("#$#")
-	if start!=-1 and end != -1:
-		chunks = html[start+3 : end].split("###")
-		sStart = html[:start]
-		sEnd = html[end+3:]
-		html = sStart + " ##>>"
-		for i in xrange(len(chunks)):
-			if i == 0:
-				html += "[latex]" + chunks[i] + "[/latex]"
-			else:
-				html += "### [latex]" + chunks[i] + "[/latex]"
-		html += "<<## " + sEnd
-	return ankiMungeQA(html, type, fields, model, data, col)
+    start = html.find("#-#")
+    end = html.find("#$#")
+    if start!=-1 and end != -1:
+        chunks = html[start+3 : end].split("###")
+        sStart = html[:start]
+        sEnd = html[end+3:]
+        html = sStart + " ##>>"
+        for i in xrange(len(chunks)):
+            if i == 0:
+                html += "[latex]" + chunks[i] + "[/latex]"
+            else:
+                html += "### [latex]" + chunks[i] + "[/latex]"
+        html += "<<## " + sEnd
+    return ankiMungeQA(html, type, fields, model, data, col)
 
 anki.hooks.addHook("mungeQA", mungeQA)
